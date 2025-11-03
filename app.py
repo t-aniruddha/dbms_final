@@ -5,7 +5,8 @@ from db_connection import get_connection
 st.set_page_config(page_title="🎵 Music DBMS Frontend", layout="wide")
 st.title("🎶 Music Database Management System")
 
-menu = ["View Tables", "Add Song", "Search Songs", "View Playlists"]
+menu = menu = ["View Tables", "Add Song", "Search Songs", "View Playlists", "User Playlists"]
+
 choice = st.sidebar.selectbox("Menu", menu)
 
 conn = get_connection()
@@ -50,6 +51,49 @@ elif choice == "View Playlists":
         JOIN users u ON p.userId = u.userId
     """)
     st.dataframe(pd.DataFrame(cursor.fetchall()))
+
+elif choice == "User Playlists":
+    st.header("🎧 View Playlists Owned by a User")
+
+    # Open a new DB connection
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    try:
+        # Step 1: Fetch all users
+        cursor.execute("SELECT userId, firstName, lastName FROM users ORDER BY userId")
+        users = cursor.fetchall()
+
+        if not users:
+            st.warning("⚠️ No users found in the database.")
+        else:
+            # Step 2: Build dropdown for user selection
+            user_dict = {f"{u['userId']} - {u['firstName']} {u['lastName']}": u['userId'] for u in users}
+            selected_user = st.selectbox("Select a user", list(user_dict.keys()))
+
+            if selected_user:
+                user_id = user_dict[selected_user]
+
+                # Step 3: Fetch playlists for that user
+                cursor.execute("""
+                    SELECT p.playlistId, p.name, p.status, p.tracks, p.total_duration
+                    FROM playlists p
+                    WHERE p.userId = %s
+                """, (user_id,))
+                playlists = cursor.fetchall()
+
+                if playlists:
+                    st.success(f"✅ Found {len(playlists)} playlist(s) owned by {selected_user}")
+                    st.dataframe(pd.DataFrame(playlists))
+                else:
+                    st.info(f"ℹ️ No playlists found for {selected_user}")
+    except Exception as e:
+        st.error(f"❌ Database error: {e}")
+    finally:
+        cursor.close()
+        conn.close()
+
+
 
 cursor.close()
 conn.close()
