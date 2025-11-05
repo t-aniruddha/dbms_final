@@ -5,7 +5,7 @@ from db_connection import get_connection
 st.set_page_config(page_title="🎵 Music DBMS Frontend", layout="wide")
 st.title("🎶 Music Database Management System")
 
-menu = menu = ["View Tables", "Add Song", "Search Songs", "View Playlists", "User Playlists"]
+menu = ["View Tables", "Add Song", "Edit Song", "Search Songs", "View Playlists", "User Playlists", "View Triggers"]
 
 choice = st.sidebar.selectbox("Menu", menu)
 
@@ -21,7 +21,8 @@ if choice == "View Tables":
     st.dataframe(pd.DataFrame(rows))
 
 elif choice == "Add Song":
-    st.header("➕ Add New Song")
+    st.header("➕ Add a New Song")
+
     sid = st.text_input("Song ID")
     title = st.text_input("Title")
     release = st.date_input("Release Date")
@@ -29,12 +30,26 @@ elif choice == "Add Song":
     link = st.text_input("Song Link")
 
     if st.button("Add Song"):
-        cursor.execute(
-            "INSERT INTO songs (songId, title, releaseDate, duration, song_link) VALUES (%s, %s, %s, %s, %s)",
-            (sid, title, release, duration, link)
-        )
-        conn.commit()
-        st.success(f"✅ '{title}' added successfully!")
+        conn = get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "INSERT INTO songs (songId, title, releaseDate, duration, song_link) VALUES (%s, %s, %s, %s, %s)",
+                (sid, title, release, duration, link)
+            )
+            conn.commit()
+            st.success(f"✅ Song '{title}' added successfully!")
+        except Exception as e:
+            err_msg = str(e)
+            # Detect trigger error message
+            if "Song duration cannot be negative" in err_msg:
+                st.error("⚠️ Song duration cannot be negative!")
+            else:
+                st.error(f"❌ Database error: {err_msg}")
+        finally:
+            cursor.close()
+            conn.close()
+
 
 elif choice == "Search Songs":
     st.header("🔍 Search Songs by Title")
@@ -93,6 +108,38 @@ elif choice == "User Playlists":
         cursor.close()
         conn.close()
 
+elif choice == "View Triggers":
+    st.header("🧩 Database Triggers")
+
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    try:
+        # Fetch triggers for the current database
+        cursor.execute("""
+            SELECT 
+                TRIGGER_NAME, EVENT_MANIPULATION, EVENT_OBJECT_TABLE, ACTION_TIMING, ACTION_STATEMENT
+            FROM information_schema.triggers
+            WHERE trigger_schema = %s
+            ORDER BY EVENT_OBJECT_TABLE;
+        """, ("project",))
+        triggers = cursor.fetchall()
+
+        if not triggers:
+            st.info("ℹ️ No triggers found in the database.")
+        else:
+            st.success(f"✅ Found {len(triggers)} trigger(s) in database `project`")
+
+            for trig in triggers:
+                with st.expander(f"⚙️ {trig['TRIGGER_NAME']} ({trig['EVENT_MANIPULATION']} ON {trig['EVENT_OBJECT_TABLE']})"):
+                    st.markdown(f"**Timing:** {trig['ACTION_TIMING']}")
+                    st.markdown("**Definition:**")
+                    st.code(trig['ACTION_STATEMENT'], language="sql")
+    except Exception as e:
+        st.error(f"❌ Error fetching triggers: {e}")
+    finally:
+        cursor.close()
+        conn.close()
 
 
 cursor.close()
